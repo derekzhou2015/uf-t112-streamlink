@@ -60,6 +60,18 @@ def test_parse_tag_mapping():
     assert childA._TAGS["EXT-X-VERSION"].__doc__ is None
 
 
+def test_parse_tag_ext_x_discontinuity_sequence_registered():
+    # The tag name must be registered with the correct RFC 8216 spelling.
+    # A typo in the registered tag name used to make EXT-X-DISCONTINUITY-SEQUENCE
+    # get silently discarded by the unknown-tag dispatch contract (zero logs/warnings).
+    assert "EXT-X-DISCONTINUITY-SEQUENCE" in M3U8Parser()._TAGS
+    assert "EXT-X-DISCONTINUTY-SEQUENCE" not in M3U8Parser()._TAGS
+    assert (
+        M3U8Parser()._TAGS["EXT-X-DISCONTINUITY-SEQUENCE"]
+        is M3U8Parser.parse_tag_ext_x_discontinuity_sequence
+    )
+
+
 @pytest.mark.parametrize(
     ("string", "expected"),
     [
@@ -703,3 +715,49 @@ class TestHLSPlaylist:
             ("360p30", 700000),
             ("160p30", 300000),
         ]
+
+    def test_parse_discontinuity_sequence(self) -> None:
+        # regression: a typo in the registered tag name silently discarded
+        # EXT-X-DISCONTINUITY-SEQUENCE, leaving the model field always None.
+        # The parsed value must be an int, matching EXT-X-MEDIA-SEQUENCE behavior.
+        data = """#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:100
+#EXT-X-DISCONTINUITY-SEQUENCE:5
+#EXTINF:2.000,
+segment0.ts
+#EXTINF:2.000,
+segment1.ts
+#EXT-X-ENDLIST
+"""
+        playlist = parse_m3u8(data, "http://test.se/", parser=M3U8Parser)
+
+        assert playlist.media_sequence == 100
+        assert isinstance(playlist.discontinuity_sequence, int)
+        assert playlist.discontinuity_sequence == 5
+        assert [segment.num for segment in playlist.segments] == [100, 101]
+
+    def test_parse_discontinuity_sequence_unset(self) -> None:
+        with text("hls/test_simple_media.m3u8") as m3u8_fh:
+            playlist = parse_m3u8(m3u8_fh.read(), "http://test.se/", parser=M3U8Parser)
+
+        assert playlist.discontinuity_sequence is None
+
+    def test_parse_unknown_tag_silently_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
+        # existing dispatch contract: unknown tags are silently skipped, no warnings
+        data = """#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-DISCONTINUTY-SEQUENCE:5
+#EXT-X-FOO-BAR:baz
+#EXTINF:2.000,
+segment0.ts
+#EXT-X-ENDLIST
+"""
+        with caplog.at_level("WARNING", "streamlink"):
+            playlist = parse_m3u8(data, "http://test.se/", parser=M3U8Parser)
+
+        assert playlist.discontinuity_sequence is None
+        assert [segment.uri for segment in playlist.segments] == ["http://test.se/segment0.ts"]
+        assert caplog.records == []

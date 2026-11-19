@@ -1,7 +1,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from streamlink.plugins.bigo import Bigo, BigoHLSStream
+from streamlink.plugins.bigo import Bigo, BigoHLSSegment, BigoHLSStream, BigoM3U8Parser
+from streamlink.stream.hls import parse_m3u8
 from tests.mixins.stream_hls import Playlist, Segment, Tag, TestMixinStreamHLS
 from tests.plugins import PluginCanHandleUrl
 
@@ -12,6 +13,25 @@ class TestPluginCanHandleUrlBigo(PluginCanHandleUrl):
     should_match = [
         "https://www.bigo.tv/SITE_ID",
     ]
+
+
+class TestBigoM3U8Parser:
+    # regression: the EXT-X-DISCONTINUITY-SEQUENCE tag is inherited from the base parser's
+    # tag registry, so a broken tag registration there breaks the plugin subclass as well
+    def test_discontinuity_sequence_inherited(self):
+        data = """#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-DISCONTINUITY-SEQUENCE:5
+#EXTINF:2.000,
+segment0.ts
+#EXT-X-ENDLIST
+"""
+        playlist = parse_m3u8(data, "http://test.se/", parser=BigoM3U8Parser)
+
+        assert isinstance(playlist.discontinuity_sequence, int)
+        assert playlist.discontinuity_sequence == 5
+        assert type(playlist.segments[0]) is BigoHLSSegment
 
 
 class BigoSegment(Segment):
