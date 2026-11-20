@@ -703,3 +703,31 @@ class TestHLSPlaylist:
             ("360p30", 700000),
             ("160p30", 300000),
         ]
+
+    def test_parse_discontinuity_sequence(self) -> None:
+        with text("hls/test_discontinuity_sequence.m3u8") as m3u8_fh:
+            playlist = parse_m3u8(m3u8_fh.read(), "http://test.se/", parser=M3U8Parser)
+
+        # the sequence number is the tag's value as a decimal-integer, not a string
+        assert playlist.discontinuity_sequence == 3
+        assert type(playlist.discontinuity_sequence) is int
+
+        # the media sequence still drives the segment numbers and is not offset by the discontinuity sequence
+        assert playlist.media_sequence == 100
+        assert [segment.num for segment in playlist.segments] == [100, 101, 102]
+
+        # the standalone discontinuity tag keeps setting the segment flag, independently of the sequence tag
+        assert [segment.discontinuity for segment in playlist.segments] == [False, False, True]
+
+    def test_parse_discontinuity_sequence_inherited(self) -> None:
+        class M3U8ParserSubclass(M3U8Parser):
+            pass
+
+        assert M3U8ParserSubclass._TAGS["EXT-X-DISCONTINUITY-SEQUENCE"] is M3U8Parser.parse_tag_ext_x_discontinuity_sequence
+        assert "EXT-X-DISCONTINUTY-SEQUENCE" not in M3U8ParserSubclass._TAGS
+
+    def test_parse_discontinuity_sequence_missing(self) -> None:
+        with text("hls/test_simple_media.m3u8") as m3u8_fh:
+            playlist = parse_m3u8(m3u8_fh.read(), "http://test.se/", parser=M3U8Parser)
+
+        assert playlist.discontinuity_sequence is None

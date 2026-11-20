@@ -432,7 +432,7 @@ class M3U8Parser(Generic[TM3U8_co, THLSSegment_co, THLSPlaylist_co], metaclass=M
         """
         self.m3u8.media_sequence = int(value)
 
-    @parse_tag("EXT-X-DISCONTINUTY-SEQUENCE")
+    @parse_tag("EXT-X-DISCONTINUITY-SEQUENCE")
     def parse_tag_ext_x_discontinuity_sequence(self, value: str) -> None:
         """
         EXT-X-DISCONTINUITY-SEQUENCE
